@@ -41,10 +41,11 @@ final class ReviewSyncService
         });
     }
 
-    public function finish(Organization $organization, ParseRun $run, OrganizationInfo $info, \DateTimeInterface $seenAt): OrganizationSnapshot
+    public function finish(Organization $organization, ParseRun $run, OrganizationInfo $info, \DateTimeInterface $seenAt, bool $complete = true): OrganizationSnapshot
     {
-        return DB::transaction(function () use ($organization, $run, $info, $seenAt) {
-            $this->changes['missing'] = $organization->reviews()->where('last_seen_at', '<', $seenAt)->count();
+        return DB::transaction(function () use ($organization, $run, $info, $seenAt, $complete) {
+            $this->changes['missing'] = $complete ? $organization->reviews()->where('last_seen_at', '<', $seenAt)->count() : null;
+            $this->changes['partial'] = ! $complete;
 
             $organization->fill([
                 'title' => $info->title ?: $organization->title,

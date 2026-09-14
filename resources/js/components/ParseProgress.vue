@@ -6,6 +6,7 @@ const props = defineProps({ run: { type: Object, required: true } });
 
 const active = computed(() => ['pending', 'running'].includes(props.run.status));
 const failed = computed(() => props.run.status === 'failed');
+const partial = computed(() => props.run.status === 'partial');
 const errorTitle = computed(() => ERROR_LABELS[props.run.error_code] ?? ERROR_LABELS.unexpected);
 </script>
 
@@ -18,6 +19,15 @@ const errorTitle = computed(() => ERROR_LABELS[props.run.error_code] ?? ERROR_LA
         </div>
         <div class="progress"><div class="progress__bar" :style="{ width: `${run.progress}%` }"></div></div>
         <div v-if="run.error_message" class="small">Прошлая попытка: {{ run.error_message }}</div>
+    </div>
+
+    <div v-else-if="partial" class="alert alert--warning">
+        <strong>{{ STATUS_LABELS.partial }}</strong>
+        <div class="small">{{ errorTitle }}. {{ run.error_message }}</div>
+        <div class="small muted">
+            Собрано отзывов: {{ run.reviews_fetched }}<span v-if="run.pages_total">, страниц {{ run.pages_done }} из {{ run.pages_total }}</span>.
+            Рейтинг и счётчики обновлены. Нажмите «Обновить данные», чтобы попробовать собрать остальное.
+        </div>
     </div>
 
     <div v-else-if="failed" class="alert alert--error">

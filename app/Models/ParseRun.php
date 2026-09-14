@@ -58,17 +58,17 @@ class ParseRun extends Model
 
     public function markCompleted(): void
     {
-        $this->update(['status' => ParseStatus::Completed, 'finished_at' => now()]);
+        $this->finishWith(ParseStatus::Completed);
+    }
+
+    public function markPartial(string $code, string $message): void
+    {
+        $this->finishWith(ParseStatus::Partial, $code, $message);
     }
 
     public function markFailed(string $code, string $message, bool $final): void
     {
-        $this->update([
-            'status' => $final ? ParseStatus::Failed : ParseStatus::Pending,
-            'error_code' => $code,
-            'error_message' => mb_substr($message, 0, 2000),
-            'finished_at' => $final ? now() : null,
-        ]);
+        $this->finishWith($final ? ParseStatus::Failed : ParseStatus::Pending, $code, $message, $final);
     }
 
     public function progressPercent(): int
@@ -81,6 +81,18 @@ class ParseRun extends Model
             return 0;
         }
 
-        return (int) min(99, floor($this->pages_done / $this->pages_total * 100));
+        $percent = (int) floor($this->pages_done / $this->pages_total * 100);
+
+        return min($this->status === ParseStatus::Partial ? 100 : 99, $percent);
+    }
+
+    private function finishWith(ParseStatus $status, ?string $code = null, ?string $message = null, bool $finished = true): void
+    {
+        $this->update([
+            'status' => $status,
+            'error_code' => $code,
+            'error_message' => $message === null ? null : mb_substr($message, 0, 2000),
+            'finished_at' => $finished ? now() : null,
+        ]);
     }
 }

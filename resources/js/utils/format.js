@@ -6,6 +6,7 @@ export const STATUS_LABELS = {
     pending: 'В очереди',
     running: 'Идёт сбор',
     completed: 'Готово',
+    partial: 'Собрано частично',
     failed: 'Ошибка',
 };
 
@@ -15,6 +16,7 @@ export const ERROR_LABELS = {
     blocked: 'Яндекс заблокировал запросы',
     markup_changed: 'Изменилась разметка Яндекс.Карт',
     empty_response: 'Пустой ответ источника',
+    reviews_skipped: 'Часть отзывов пропущена',
     unexpected: 'Непредвиденная ошибка',
 };
 

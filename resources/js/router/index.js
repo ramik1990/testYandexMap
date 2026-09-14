@@ -5,7 +5,7 @@ const routes = [
     { path: '/login', name: 'login', component: () => import('../pages/LoginPage.vue'), meta: { guest: true } },
     { path: '/', name: 'settings', component: () => import('../pages/SettingsPage.vue'), meta: { auth: true } },
     {
-        path: '/organizations/:id(\d+)',
+        path: '/organizations/:id(\\d+)',
         name: 'organization',
         component: () => import('../pages/OrganizationPage.vue'),
         props: (route) => ({ id: Number(route.params.id) }),

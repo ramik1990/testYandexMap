@@ -8,6 +8,7 @@ final class ReviewsPage
         public readonly int $page,
         public readonly array $reviews,
         public readonly int $totalCount,
+        public readonly int $skipped = 0,
     ) {
     }
 

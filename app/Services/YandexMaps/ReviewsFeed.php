@@ -10,6 +10,7 @@ use App\Services\YandexMaps\Exceptions\SourceUnavailableException;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 final class ReviewsFeed
 {
@@ -52,7 +53,35 @@ final class ReviewsFeed
             ]);
         }
 
-        return new ReviewsPage($page, array_map(fn (array $item) => $this->mapReview($item), $reviews), (int) $total);
+        return $this->mapPage($page, $reviews, (int) $total);
+    }
+
+    private function mapPage(int $page, array $items, int $total): ReviewsPage
+    {
+        $reviews = [];
+        $skipped = 0;
+
+        foreach ($items as $item) {
+            $review = is_array($item) ? $this->mapReview($item, $page) : null;
+
+            if ($review === null) {
+                $skipped++;
+
+                continue;
+            }
+
+            $reviews[] = $review;
+        }
+
+        if ($reviews === [] && $skipped > 0) {
+            throw new MarkupChangedException("Ни один отзыв на странице {$page} не удалось разобрать: изменилась структура отзыва.", [
+                'business_id' => $this->businessId,
+                'skipped' => $skipped,
+                'sample_keys' => array_keys((array) reset($items)),
+            ]);
+        }
+
+        return new ReviewsPage($page, $reviews, $total, $skipped);
     }
 
     private function request(int $page): array
@@ -97,15 +126,28 @@ final class ReviewsFeed
         throw new SourceUnavailableException('fetchReviews вернул ошибку на первой странице.', ['error' => $error]);
     }
 
-    private function mapReview(array $item): ReviewData
+    private function mapReview(array $item, int $page): ?ReviewData
     {
-        foreach (self::REQUIRED_REVIEW_KEYS as $key) {
-            if (! array_key_exists($key, $item)) {
-                throw new MarkupChangedException("В отзыве отсутствует обязательное поле {$key}.", ['keys' => array_keys($item)]);
-            }
+        $missing = array_values(array_filter(
+            self::REQUIRED_REVIEW_KEYS,
+            static fn (string $key) => ! array_key_exists($key, $item),
+        ));
+
+        if ($missing !== []) {
+            return $this->skip($item, $page, 'нет обязательных полей: '.implode(', ', $missing));
         }
 
-        $replyAt = Arr::get($item, 'businessComment.updatedTime');
+        if (! is_numeric($item['rating'])) {
+            return $this->skip($item, $page, 'оценка не числовая');
+        }
+
+        try {
+            $publishedAt = CarbonImmutable::parse($item['updatedTime']);
+            $replyAt = Arr::get($item, 'businessComment.updatedTime');
+            $replyAt = $replyAt ? CarbonImmutable::parse($replyAt) : null;
+        } catch (Throwable $e) {
+            return $this->skip($item, $page, 'некорректная дата: '.$e->getMessage());
+        }
 
         return new ReviewData(
             (string) $item['reviewId'],
@@ -114,12 +156,25 @@ final class ReviewsFeed
             Arr::get($item, 'author.professionLevel'),
             (int) $item['rating'],
             (string) ($item['text'] ?? ''),
-            CarbonImmutable::parse($item['updatedTime']),
+            $publishedAt,
             (int) Arr::get($item, 'reactions.likes', 0),
             (int) Arr::get($item, 'reactions.dislikes', 0),
             Arr::get($item, 'businessComment.text'),
-            $replyAt ? CarbonImmutable::parse($replyAt) : null,
+            $replyAt,
         );
+    }
+
+    private function skip(array $item, int $page, string $reason): ?ReviewData
+    {
+        Log::channel('parser')->warning('Отзыв пропущен', [
+            'business_id' => $this->businessId,
+            'page' => $page,
+            'review_id' => $item['reviewId'] ?? null,
+            'reason' => $reason,
+            'keys' => array_keys($item),
+        ]);
+
+        return null;
     }
 
     private function avatar(?string $url): ?string

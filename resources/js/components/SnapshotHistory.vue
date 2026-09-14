@@ -28,7 +28,11 @@ const diff = (before, after, format) => (before === null || before === undefined
                     <td>{{ formatNumber(snapshot.rating_count) }} <div class="diff">{{ diff(snapshot.changes.before?.rating_count, snapshot.rating_count, formatNumber) }}</div></td>
                     <td>{{ formatNumber(snapshot.review_count) }} <div class="diff">{{ diff(snapshot.changes.before?.review_count, snapshot.review_count, formatNumber) }}</div></td>
                     <td>{{ formatNumber(snapshot.reviews_stored) }}</td>
-                    <td>+{{ snapshot.changes.added }} новых · {{ snapshot.changes.updated }} изменённых · {{ snapshot.changes.missing }} пропало из выдачи</td>
+                    <td>
+                        +{{ snapshot.changes.added }} новых · {{ snapshot.changes.updated }} изменённых ·
+                        <template v-if="snapshot.changes.partial">сбор неполный, пропавшие не считались</template>
+                        <template v-else>{{ snapshot.changes.missing }} пропало из выдачи</template>
+                    </td>
                 </tr>
             </tbody>
         </table>

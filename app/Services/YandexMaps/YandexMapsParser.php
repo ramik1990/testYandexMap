@@ -3,6 +3,7 @@
 namespace App\Services\YandexMaps;
 
 use App\Services\YandexMaps\Data\ParseResult;
+use App\Services\YandexMaps\Data\ParseWarning;
 use App\Services\YandexMaps\Exceptions\EmptyResponseException;
 use App\Services\YandexMaps\Exceptions\ParserException;
 use Closure;
@@ -43,10 +44,29 @@ final class YandexMapsParser
         $reviews = [];
         $number = 1;
         $pagesTotal = null;
+        $skipped = 0;
+        $warning = null;
 
         while (true) {
             $this->http->throttle();
-            $reviewsPage = $feed->fetchPage($number);
+
+            try {
+                $reviewsPage = $feed->fetchPage($number);
+            } catch (ParserException $e) {
+                if ($reviews === [] || $e->isRetryable()) {
+                    throw $e;
+                }
+
+                $warning = new ParseWarning($e->errorCode(), $e->getMessage());
+
+                Log::channel('parser')->warning('Сбор остановлен на странице '.$number.', сохраняем уже полученные отзывы', [
+                    'business_id' => $businessId,
+                    'reviews' => count($reviews),
+                    'code' => $e->errorCode(),
+                ] + $e->context());
+
+                break;
+            }
 
             if ($number === 1 && $reviewsPage->isEmpty() && ($page->organization->reviewCount ?? 0) > 0) {
                 throw new EmptyResponseException('Отзывы не получены, хотя карточка сообщает об их наличии.', [
@@ -58,6 +78,7 @@ final class YandexMapsParser
                 $reviews[$review->id] = $review;
             }
 
+            $skipped += $reviewsPage->skipped;
             $pagesTotal ??= $this->expectedPages($reviewsPage->totalCount);
             $onProgress($number, $pagesTotal, count($reviews), $reviewsPage->reviews);
 
@@ -68,13 +89,19 @@ final class YandexMapsParser
             $number++;
         }
 
+        if ($warning === null && $skipped > 0) {
+            $warning = new ParseWarning('reviews_skipped', "Пропущено отзывов с неожиданной структурой: {$skipped}.");
+        }
+
         Log::channel('parser')->info('Организация распарсена', [
             'business_id' => $businessId,
             'reviews' => count($reviews),
             'pages' => $number,
+            'skipped' => $skipped,
+            'warning' => $warning?->code,
         ]);
 
-        return new ParseResult($page->organization, array_values($reviews));
+        return new ParseResult($page->organization, array_values($reviews), $warning);
     }
 
     private function expectedPages(int $totalCount): int

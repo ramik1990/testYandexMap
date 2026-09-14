@@ -63,7 +63,14 @@ class ParseOrganizationJob implements ShouldQueue, ShouldBeUnique
             throw $e;
         }
 
-        $sync->finish($organization, $this->run, $result->organization, $seenAt);
+        $sync->finish($organization, $this->run, $result->organization, $seenAt, $result->isComplete());
+
+        if ($result->warning !== null) {
+            $this->run->markPartial($result->warning->code, $result->warning->message);
+
+            return;
+        }
+
         $this->run->markCompleted();
     }
 
