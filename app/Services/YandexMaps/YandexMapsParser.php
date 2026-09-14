@@ -46,6 +46,7 @@ final class YandexMapsParser
         $pagesTotal = null;
         $skipped = 0;
         $warning = null;
+        $interrupted = false;
 
         while (true) {
             $this->http->throttle();
@@ -58,6 +59,7 @@ final class YandexMapsParser
                 }
 
                 $warning = new ParseWarning($e->errorCode(), $e->getMessage());
+                $interrupted = true;
 
                 Log::channel('parser')->warning('Сбор остановлен на странице '.$number.', сохраняем уже полученные отзывы', [
                     'business_id' => $businessId,
@@ -101,7 +103,7 @@ final class YandexMapsParser
             'warning' => $warning?->code,
         ]);
 
-        return new ParseResult($page->organization, array_values($reviews), $warning);
+        return new ParseResult($page->organization, array_values($reviews), $warning, $interrupted);
     }
 
     private function expectedPages(int $totalCount): int

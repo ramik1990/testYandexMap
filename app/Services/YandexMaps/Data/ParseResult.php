@@ -8,11 +8,12 @@ final class ParseResult
         public readonly OrganizationInfo $organization,
         public readonly array $reviews,
         public readonly ?ParseWarning $warning = null,
+        public readonly bool $interrupted = false,
     ) {
     }
 
-    public function isComplete(): bool
+    public function traversedAll(): bool
     {
-        return $this->warning === null;
+        return ! $this->interrupted;
     }
 }

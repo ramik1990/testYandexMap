@@ -14,7 +14,13 @@ use Throwable;
 
 final class ReviewsFeed
 {
-    private const REQUIRED_REVIEW_KEYS = ['reviewId', 'author', 'rating', 'updatedTime'];
+    private const ID_KEYS = ['reviewId', 'id'];
+
+    private const DATE_KEYS = ['updatedTime', 'createdTime', 'time'];
+
+    private const MIN_RATING = 1;
+
+    private const MAX_RATING = 5;
 
     public function __construct(
         private readonly YandexHttpClient $http,
@@ -62,7 +68,7 @@ final class ReviewsFeed
         $skipped = 0;
 
         foreach ($items as $item) {
-            $review = is_array($item) ? $this->mapReview($item, $page) : null;
+            $review = is_array($item) ? $this->mapReview($item, $page) : $this->skip($item, $page, 'элемент списка не является объектом');
 
             if ($review === null) {
                 $skipped++;
@@ -128,48 +134,97 @@ final class ReviewsFeed
 
     private function mapReview(array $item, int $page): ?ReviewData
     {
-        $missing = array_values(array_filter(
-            self::REQUIRED_REVIEW_KEYS,
-            static fn (string $key) => ! array_key_exists($key, $item),
-        ));
+        $id = $this->first($item, self::ID_KEYS);
 
-        if ($missing !== []) {
-            return $this->skip($item, $page, 'нет обязательных полей: '.implode(', ', $missing));
-        }
-
-        if (! is_numeric($item['rating'])) {
-            return $this->skip($item, $page, 'оценка не числовая');
-        }
-
-        try {
-            $publishedAt = CarbonImmutable::parse($item['updatedTime']);
-            $replyAt = Arr::get($item, 'businessComment.updatedTime');
-            $replyAt = $replyAt ? CarbonImmutable::parse($replyAt) : null;
-        } catch (Throwable $e) {
-            return $this->skip($item, $page, 'некорректная дата: '.$e->getMessage());
+        if ($id === null) {
+            return $this->skip($item, $page, 'нет идентификатора отзыва');
         }
 
         return new ReviewData(
-            (string) $item['reviewId'],
-            (string) (Arr::get($item, 'author.name') ?: 'Пользователь Яндекса'),
-            $this->avatar(Arr::get($item, 'author.avatarUrl')),
-            Arr::get($item, 'author.professionLevel'),
-            (int) $item['rating'],
-            (string) ($item['text'] ?? ''),
-            $publishedAt,
+            $id,
+            $this->string(Arr::get($item, 'author.name')) ?: 'Пользователь Яндекса',
+            $this->avatar($this->string(Arr::get($item, 'author.avatarUrl'))),
+            $this->string(Arr::get($item, 'author.professionLevel')),
+            $this->rating($item, $page),
+            $this->string($item['text'] ?? null) ?? '',
+            $this->date($item, self::DATE_KEYS, $page),
             (int) Arr::get($item, 'reactions.likes', 0),
             (int) Arr::get($item, 'reactions.dislikes', 0),
-            Arr::get($item, 'businessComment.text'),
-            $replyAt,
+            $this->string(Arr::get($item, 'businessComment.text')),
+            $this->date($item, ['businessComment.updatedTime'], $page),
         );
     }
 
-    private function skip(array $item, int $page, string $reason): ?ReviewData
+    private function rating(array $item, int $page): ?int
     {
-        Log::channel('parser')->warning('Отзыв пропущен', [
+        $rating = $item['rating'] ?? null;
+
+        if (! is_numeric($rating)) {
+            return $rating === null ? null : $this->note($item, $page, 'оценка не числовая, сохраняем отзыв без оценки');
+        }
+
+        $rating = (int) round((float) $rating);
+
+        if ($rating < self::MIN_RATING || $rating > self::MAX_RATING) {
+            return $this->note($item, $page, "оценка вне диапазона {$rating}, сохраняем отзыв без оценки");
+        }
+
+        return $rating;
+    }
+
+    private function date(array $item, array $keys, int $page): ?CarbonImmutable
+    {
+        foreach ($keys as $key) {
+            $value = Arr::get($item, $key);
+
+            if (blank($value) || ! is_scalar($value)) {
+                continue;
+            }
+
+            try {
+                return CarbonImmutable::parse($value);
+            } catch (Throwable $e) {
+                $this->note($item, $page, "не разобрана дата {$key}: ".$e->getMessage());
+            }
+        }
+
+        return null;
+    }
+
+    private function first(array $item, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            $value = $this->string(Arr::get($item, $key));
+
+            if ($value !== null && $value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function string(mixed $value): ?string
+    {
+        return is_scalar($value) ? (string) $value : null;
+    }
+
+    private function skip(mixed $item, int $page, string $reason): ?ReviewData
+    {
+        return $this->write('Отзыв пропущен', is_array($item) ? $item : [], $page, $reason);
+    }
+
+    private function note(array $item, int $page, string $reason): ?ReviewData
+    {
+        return $this->write('Отзыв разобран частично', $item, $page, $reason);
+    }
+
+    private function write(string $message, array $item, int $page, string $reason): ?ReviewData
+    {
+        Log::channel('parser')->warning($message, [
             'business_id' => $this->businessId,
             'page' => $page,
-            'review_id' => $item['reviewId'] ?? null,
+            'review_id' => $this->first($item, self::ID_KEYS),
             'reason' => $reason,
             'keys' => array_keys($item),
         ]);

@@ -13,8 +13,9 @@ defineProps({ review: { type: Object, required: true } });
             <div>
                 <div class="review__author">{{ review.author.name }}</div>
                 <div class="review__meta">
-                    <StarRating :value="review.rating" />
-                    <span>{{ formatDate(review.published_at) }}</span>
+                    <StarRating v-if="review.rating" :value="review.rating" />
+                    <span v-else class="muted">без оценки</span>
+                    <span v-if="review.published_at">{{ formatDate(review.published_at) }}</span>
                     <span v-if="review.author.level">{{ review.author.level }}</span>
                 </div>
             </div>

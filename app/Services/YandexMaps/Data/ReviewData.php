@@ -11,9 +11,9 @@ final class ReviewData
         public readonly string $authorName,
         public readonly ?string $authorAvatar,
         public readonly ?string $authorLevel,
-        public readonly int $rating,
+        public readonly ?int $rating,
         public readonly string $text,
-        public readonly CarbonImmutable $publishedAt,
+        public readonly ?CarbonImmutable $publishedAt,
         public readonly int $likes,
         public readonly int $dislikes,
         public readonly ?string $businessReply,
@@ -24,9 +24,9 @@ final class ReviewData
     public function contentHash(): string
     {
         return sha1(implode('|', [
-            $this->rating,
+            $this->rating ?? '',
             $this->text,
-            $this->publishedAt->toIso8601String(),
+            $this->publishedAt?->toIso8601String() ?? '',
             $this->likes,
             $this->dislikes,
             $this->businessReply,
